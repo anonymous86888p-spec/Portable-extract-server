@@ -8,7 +8,7 @@
  * 1. Push this folder (server.js + package.json) to a new GitHub repo.
  * 2. On render.com: New -> Web Service -> connect that repo.
  * 3. Build command: npm install   |   Start command: node server.js
- * 4. In the service's Environment tab, add ANTHROPIC_API_KEY as a secret.
+ * 4. In the service's Environment tab, add GROQ_API_KEY as a secret.
  * 5. Deploy. Copy the given URL (e.g. https://xxx.onrender.com) into
  *    WORKER_URL near the top of index.html's <script>, then republish.
  */
@@ -46,25 +46,27 @@ app.post("/", async (req, res) => {
   if (!transcript || typeof transcript !== "string") {
     return res.status(400).json({ error: "Missing 'transcript' string" });
   }
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return res.status(500).json({ error: "Server misconfigured: ANTHROPIC_API_KEY not set" });
+  if (!process.env.GROQ_API_KEY) {
+    return res.status(500).json({ error: "Server misconfigured: GROQ_API_KEY not set" });
   }
 
   const userMsg = `Title: ${title || "Untitled"}\nSource AI: ${source || "Unknown"}\n\nTranscript:\n${transcript.slice(0, 20000)}`;
 
   try {
-    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
+        "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-6",
+        model: "llama-3.3-70b-versatile",
         max_tokens: 1500,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: "user", content: userMsg }],
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: userMsg },
+        ],
       }),
     });
 
@@ -74,7 +76,7 @@ app.post("/", async (req, res) => {
     }
 
     const data = await resp.json();
-    const raw = (data.content || []).map(b => b.text || "").join("").trim();
+    const raw = (data.choices?.[0]?.message?.content || "").trim();
     const cleaned = raw.replace(/^```json\s*|```$/g, "").trim();
 
     let pkg;
@@ -92,3 +94,4 @@ app.post("/", async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Portable extraction server listening on port ${PORT}`));
+  
